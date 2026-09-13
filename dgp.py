@@ -45,11 +45,13 @@ def dgp_grace(k, grace, nobs, timevarying, rngseed, plan=None):
 
     # Plan 1 or plan 0
     if (plan is None)|(plan == 1):
-        a_value = rng.binomial(n=1, p=inverse_logit(-2 + 0.5 * w_value))
+        # a_value = rng.binomial(n=1, p=inverse_logit(-2 + 0.5 * w_value))
+        a_value = rng.binomial(n=1, p=inverse_logit(-2 - 0.5 * w_value))
     elif plan == 0:
         a_value = np.zeros(shape=nobs, dtype=int)
     # Outcome variable at t_in==0
-    y_value = rng.binomial(n=1, p=inverse_logit(-2 + 0.7 * a_value - 0.6 * w_value))
+    # y_value = rng.binomial(n=1, p=inverse_logit(-2 + 0.7 * a_value - 0.6 * w_value))
+    y_value = rng.binomial(n=1, p=inverse_logit(-5 + 0.6 * a_value + 0.7 * w_value))
     # Dataframe of nobs rows for the t_in ==0, first time point
     d = pd.DataFrame()
     d["W"] = w_value  # baseline W at t_in==0
@@ -190,8 +192,10 @@ def dgp_grace(k, grace, nobs, timevarying, rngseed, plan=None):
     d['plan_001'] = np.where(d['id'].isin(ids_001), 1, 0)
     d['plan_000'] = np.where(d['id'].isin(ids_000), 1, 0)
     d['plan_NA'] = np.where(d['id'].isin(ids_y_within_gp), 1, 0)
-
-    d = d[["id", "t_in", "t_out", "W", "A", "Y", "id_counts", 'plan_000', 'plan_100', 'plan_010', 'plan_001', 'plan_NA']].copy()
+    d['A_lag'] =  d.groupby('id')['A'].shift(1)
+    # d['A_lag'] = d['A_lag'].fillna(d.groupby('id')['A'].transform('first')).astype(int)
+    d['A_lag'] = np.where(d['t_in'] == 0, 0, d['A_lag'])
+    d = d[["id", "t_in", "t_out", "W", "A", "A_lag", "Y", "id_counts", 'plan_000', 'plan_100', 'plan_010', 'plan_001', 'plan_NA']].copy()
     return d
 
 
@@ -264,6 +268,7 @@ def dgp_grace_set_plan(k, grace, nobs_target, timevarying, plan, rngseed, max_ro
         seed = rng_base * 5 + round_idx + 1
         # Simulate batch of observed population
         batch_df = dgp_grace(k=k, grace=grace, nobs=remaining, timevarying=timevarying, rngseed=seed, plan=None)
+        print(f"round: {round_idx}, simsize: {remaining}")
         # Identify ids in this batch that adhered (any A at t_in==grace)
         anyA_001 = batch_df[batch_df["t_in"]==grace].groupby("id")["A"].sum()
         any_000 = batch_df[(batch_df['plan_000'] == 1) & batch_df['t_in'].between(0, grace)].groupby('id')['A'].sum()
@@ -273,8 +278,9 @@ def dgp_grace_set_plan(k, grace, nobs_target, timevarying, plan, rngseed, max_ro
         anyAYgp = pd.concat([anyAgp, anyYgp], axis=1)
         ids_y_within_gp = anyAYgp[(anyAYgp["A"] == 0) & (anyAYgp["Y"] == 1)].index.to_numpy()
         n_y_within_gp = ids_y_within_gp.size
+        print(f"round:{round_idx}, n_y_within_gp:{n_y_within_gp}")
 
-        if plan == 1:
+        if plan == 1: 
             adhered_ids = anyA_001[anyA_001 >= 1].index.to_numpy()
             n_adhered = adhered_ids.size
             keeping_ids = adhered_ids
@@ -308,7 +314,8 @@ def dgp_grace_set_plan(k, grace, nobs_target, timevarying, plan, rngseed, max_ro
         remaining = nonadhered_count
         print(f"remaining {remaining}")
         # Tracking numbers 
-        print(f"round {round_idx}: simulated {remaining}, adhered found {n_adhered} or {n_keeping}")
+        # print(f"round {round_idx}: simulated {remaining}, adhered found {n_adhered} or {n_keeping}")
+        # print(f"round {round_idx}: simulated {remaining}, adhered found {n_adhered}, n_y_within_gp found {n_y_within_gp}, kept = {n_adhered + n_y_within_gp} or {n_keeping}")
 
     # concat kept frames and final formatting 
     # Return a empty dataframe even if there was noone kept and meeting the criteria
