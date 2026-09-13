@@ -14,10 +14,9 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
-from delicatessen import MEstimator
 from dgp import dgp_grace
 
-# from deli_estimation import MEstimator
+from deli_estimation import MEstimator
 from functions_ee import clone_and_censor
 
 # Establish the family distribution (binomial) and link function (logit)
@@ -29,7 +28,7 @@ date = "2026-08-12"
 
 rng_runs = np.random.default_rng(319_031_111)
 gp=2
-nobs=3000
+nobs=10_000
 i = 1
 # Create dgp
 random_integer = rng_runs.integers(low=15, high=100_000_000, size=1)
@@ -52,6 +51,14 @@ d_cens0 = d_cens0.set_index("_idx")
 d = clone_and_censor(d_obs, gp=2, type='d_vec_orig')
 d_c0 = clone_and_censor(d_obs, gp=2, type='d_vec_c0')
 d_c1 = clone_and_censor(d_obs, gp=2, type='d_vec_c1')
+
+# Output interim as csv for R
+d_obs.to_csv("./data/d_obs_long.csv")
+d_cens1.to_csv("./data/d_cens1_long.csv")
+d_cens0.to_csv("./data/d_cens0_long.csv")
+d.to_csv("./data/d_obs_wide.csv")
+d_c0.to_csv("./data/d_cens0_wide.csv")
+d_c1.to_csv("./data/d_cens1_wide.csv")
 
 ### Input from the original dataset
 # Covariate
@@ -117,7 +124,6 @@ theta = inits
 
 ### Init Betas for the function
 index_msm = n_times_to_predict*5
-
 theta_rd = theta[:n_times_to_predict]
 theta_r1 = theta[n_times_to_predict:(n_times_to_predict*2)]
 theta_r0 = theta[(n_times_to_predict*2):(n_times_to_predict*3)]
@@ -142,7 +148,7 @@ def psi_iptw(theta):
     beta_time = np.asarray(theta[2:])
     # * trt_residuals
     # Observed
-    trt_obs_matrix = trt_obs * (t_trt == unique_trt_times[:, None].astype(int))
+    trt_obs_matrix = trt_obs * (t_trt == unique_trt_times[:, None]).astype(int)
     # Risk Set
     in_risk_set = ((t_delta - 1) >= unique_trt_times[:, None]).astype(int)
     # in_risk_set = ((t_delta) >= unique_trt_times[:, None]).astype(int)
@@ -225,7 +231,6 @@ def iptw_weights(theta):
     # NOTE - NOT CUMPROD, version 121, version 47 - just the non-cumprod predicted probability here 
     # pred_trt_cumprod_mtrx_gp[gp, :] = np.where( (t_trt == 2) & (trt_obs == 1), pred_trt_alltimepoints[gp, :], 1) # NOT CUMPROD, version 121, version 47 - just the non-cumprod predicted probability here 
     # pred_trt_cumprod_mtrx_gp[gp, :] =  pred_trt_alltimepoints[gp, :] # NOT CUMPROD, version 122 - just the non-cumprod predicted probability here 
-
     cens1_tmp_mtrx = cens1_risk_set_mtrx * np.power(pred_trt_cumprod_mtrx_gp, -1)
     cens1_weight_mtrx = np.cumprod(cens1_tmp_mtrx, axis=0)
 
@@ -239,13 +244,13 @@ def iptw_weights(theta):
 
 def psi_msm_v3(theta, weight_matrix):
     # Initiate parameters
-    beta_time_predict = np.asarray(theta)
+    beta_t = np.asarray(theta)
     # WITH intercept version 
     time_design_matrix = np.identity(n=n_times_to_predict)
     time_design_matrix[:, 0] = 1
 
     # Log odds times to predict 
-    lodds_t_to_predict = np.dot(time_design_matrix, beta_time_predict[:, None])
+    lodds_t_to_predict = np.dot(time_design_matrix, beta_t[:, None])
     delta_pred_mtrx = inverse_logit(lodds_t_to_predict)
     delta_obs_mtrx = delta * ((t_delta - 1) == times_to_predict[:, None]).astype(int)
     delta_residual_matrix = (delta_obs_mtrx - delta_pred_mtrx) * weight_matrix
@@ -310,27 +315,34 @@ t0_ee = time.perf_counter()
 ccw_estr = MEstimator(psi_ccw_iptw_v3, init=inits)
 ccw_estr.estimate()
 t1_ee = time.perf_counter()
-
+print(t1_ee - t0_ee)
+# 3.7499153000098886 seconds
 with open(f"./time_ee_{date}.txt", "w", encoding="utf-8") as file:
     print(f"For size = {nobs} study pop, Elapsed for estimating equations B=1 iters: {((t1_ee - t0_ee)/60):.3f} mins OR {(t1_ee - t0_ee):.3f} secs", file=file)
 estr_theta = ccw_estr.theta
+print(ccw_estr.theta)
+# MEstimator python output
+# [ 5.07305976e-04  6.28023085e-04  7.63124750e-03  7.93661880e-03
+#   6.74153490e-03  8.14138394e-03  1.04000000e-02  2.09000000e-02
+#   3.76929161e-02  4.89126436e-02  5.95242235e-02  7.80582762e-02
+#   9.89269402e-03  2.02719769e-02  3.00616686e-02  4.09760248e-02
+#   5.27826886e-02  6.99168922e-02 -4.55549501e+00  2.02364897e-02
+#   5.07118536e-01  1.15562719e-01  7.10549623e-02  6.48622726e-01
+#  -4.60601682e+00  5.85536038e-02  1.01142858e-02  1.30179758e-01
+#   2.21152373e-01  6.11819554e-01 -3.30946845e+01 -5.64464801e-01
+#  -1.96546575e+00  1.28440083e-01  1.43361337e-02]
 # Now take the rd outputs
-
+estr_theta[index_msm:]
 # Output 
 point_rd = estr_theta[:n_times_to_predict]
 point_r1 = estr_theta[n_times_to_predict:(n_times_to_predict*2)]
 point_r0 = estr_theta[(n_times_to_predict*2):(n_times_to_predict*3)]
 variance_rd = (np.diag(ccw_estr.variance))[:n_times_to_predict]
-# array([0.00017243, 0.00021711, 0.00258787, 0.00268472, 0.00274975,
-    #    0.00282905])
 print(np.sqrt(variance_rd))
-# [0.01313138 0.01473475 0.05087111 0.05181431 0.0524381  0.05318879]
 variance_r1 = (np.diag(ccw_estr.variance))[n_times_to_predict:(n_times_to_predict*2)]
 print(np.sqrt(variance_r1))
-#[0.02255827 0.02378024 0.05322323 0.05322323 0.05329367 0.05329367]
 variance_r0 = (np.diag(ccw_estr.variance))[(n_times_to_predict*2):(n_times_to_predict*3)]
 print(np.sqrt(variance_r0))
-# [0.02110527 0.02200509 0.02310635 0.02487155 0.02579815 0.02709598]
 lcl_rd = (ccw_estr.confidence_intervals())[:n_times_to_predict, 0]
 lcl_r1 = (ccw_estr.confidence_intervals())[n_times_to_predict:(n_times_to_predict*2), 0]
 lcl_r0 = (ccw_estr.confidence_intervals())[(n_times_to_predict*2):(n_times_to_predict*3), 0]
@@ -346,7 +358,13 @@ ee_rd_out['LCL'] = np.asarray(lcl_rd)
 ee_rd_out['UCL'] = np.asarray(ucl_rd)
 ee_rd_out['measure'] = "rd"
 print(ee_rd_out)
-
+#    estimate      variance    stderr       LCL       UCL measure
+# 0  0.000507  1.598513e-07  0.000400 -0.000276  0.001291      rd
+# 1  0.000628  4.306943e-07  0.000656 -0.000658  0.001914      rd
+# 2  0.007631  1.654380e-05  0.004067 -0.000341  0.015603      rd
+# 3  0.007937  2.662455e-05  0.005160 -0.002177  0.018050      rd
+# 4  0.006742  3.522706e-05  0.005935 -0.004891  0.018374      rd
+# 5  0.008141  5.143342e-05  0.007172 -0.005915  0.022198      rd
 # Risk 1 
 ee_r1_out = pd.DataFrame({"estimate": np.asarray(point_r1)})
 ee_r1_out['variance'] = np.asarray(variance_r1)
@@ -355,7 +373,13 @@ ee_r1_out['LCL'] = np.asarray(lcl_r1)
 ee_r1_out['UCL'] = np.asarray(ucl_r1)
 ee_r1_out['measure'] = "risk1"
 print(ee_r1_out)
-
+#    estimate  variance    stderr       LCL       UCL measure
+# 0  0.121000  0.000011  0.003261  0.114608  0.127392   risk1
+# 1  0.130400  0.000011  0.003367  0.123800  0.137000   risk1
+# 2  0.145939  0.000023  0.004810  0.136511  0.155367   risk1
+# 3  0.154989  0.000029  0.005420  0.144366  0.165612   risk1
+# 4  0.165317  0.000036  0.006003  0.153552  0.177082   risk1
+# 5  0.181853  0.000047  0.006836  0.168456  0.195251   risk1
 # Risk 0
 ee_r0_out = pd.DataFrame({"estimate": np.asarray(point_r0)})
 ee_r0_out['variance'] = np.asarray(variance_r0)
@@ -364,7 +388,13 @@ ee_r0_out['LCL'] = np.asarray(lcl_r0)
 ee_r0_out['UCL'] = np.asarray(ucl_r0)
 ee_r0_out['measure'] = "risk0"
 print(ee_r0_out)
-
+#    estimate  variance    stderr       LCL       UCL measure
+# 0  0.009893  0.000001  0.001044  0.007847  0.011939   risk0
+# 1  0.020272  0.000002  0.001535  0.017264  0.023280   risk0
+# 2  0.030062  0.000004  0.001922  0.026295  0.033828   risk0
+# 3  0.040976  0.000005  0.002274  0.036519  0.045433   risk0
+# 4  0.052783  0.000007  0.002588  0.047711  0.057854   risk0
+# 5  0.069917  0.000009  0.002976  0.064085  0.075749   risk0
 print([point_rd, np.sqrt(variance_rd), point_r1, np.sqrt(variance_r1), point_r0, np.sqrt(variance_r0)])
 
 # !SECTION - ESTIMATING EQUATIONS
@@ -379,6 +409,16 @@ m_iptw_cut2 = smf.glm(formula='A ~  A_lag + W + C(t_in)', data=d_obs.loc[d_obs['
 logit_iptw_cut2 = m_iptw_cut2.fit()
 logit_iptw_cut2.summary()
 print(logit_iptw_cut2.params)
+# Intercept       -1.965466
+# C(t_in)[T.1]     0.128440
+# C(t_in)[T.2]     0.014336
+# A_lag          -25.573781
+# W               -0.564465
+# dtype: float64
+# Compare with the estimating equations: 
+with np.printoptions(formatter={"float_kind": lambda value: f"{value:4f}"}):
+    print(estr_theta[index_msm:])
+# [-33.094684 -0.564465 -1.965466 0.128440 0.014336]
 
 # Version where A_lag is always 0 for t_in=0
 d_iptw = d_obs.copy()
@@ -388,7 +428,7 @@ d_iptw['pred_notrt']  = 1 - d_iptw['pred_trt']
 d_iptw['pred_observedtrt'] = np.where((d_iptw['A'] == 1) & (d_iptw['t_in'] <= gp), d_iptw['pred_trt'], d_iptw['pred_notrt'] )
 d_iptw['pred_trt_denom'] = d_iptw.groupby('id')['pred_observedtrt'].cumprod()
 d_iptw['iptw_wgt'] = 1 / d_iptw['pred_trt_denom']
-
+d_iptw['iptw_wgt'].value_counts()
 d_cens1_i = d_cens1
 d_cens1_i['trt_clone'] = 1
 d_cens1_i = pd.merge(left=d_cens1_i, right=d_iptw[['id', 't_in', 'pred_observedtrt', 'pred_trt_denom']])
@@ -398,13 +438,14 @@ d_cens1_i['pred_trt_plan1'] = np.where((d_cens1_i['t_in'] == gp), d_cens1_i['pre
 d_cens1_i['pr_trt1_denom'] = d_cens1_i.groupby('id')['pred_trt_plan1'].cumprod()
 d_cens1_i['iptw_plan1_set1'] = np.where((d_cens1_i['plan_100'] == 1) | (d_cens1_i['plan_010'] == 1), 1, 1/d_cens1_i['pr_trt1_denom'])
 d_cens1_i['iptw_clones'] = d_cens1_i['iptw_plan1_set1'] 
-
+d_cens1_i.loc[d_cens1_i['censor'] == 0,:]['iptw_clones'].value_counts()
 d_cens0_i = d_cens0
 d_cens0_i['trt_clone'] = 0
 d_cens0_i = pd.merge(left = d_cens0_i, right = d_iptw[['id', 't_in', 'pred_trt', 'pred_observedtrt','pred_trt_denom']], how='left', left_on=['id', 't_in'], right_on=['id', 't_in'])
 d_cens0_i['censor_0'] = d_cens0_i['censor']
 d_cens0_i['iptw_plan0'] = 1/d_cens0_i['pred_trt_denom']
 d_cens0_i['iptw_clones'] = d_cens0_i['iptw_plan0']
+d_cens0_i.loc[d_cens0_i['censor'] == 0,:]['iptw_clones'].value_counts()
 
 
 ##################################################
@@ -419,28 +460,14 @@ d_plan_long = d_long.loc[d_long['censor'] == 0].copy()
 # Outcome model 
 m_out = smf.glm(formula='Y ~ C(t_out)', family=f, data=d_plan_long.loc[d_plan_long['trt_clone'] == 1], freq_weights=d_plan_long.loc[d_plan_long['trt_clone'] == 1,'iptw_clones'])
 logit_out = m_out.fit()
-print(logit_out.summary())
-#                  Generalized Linear Model Regression Results                  
-# ==============================================================================
-# Dep. Variable:                      Y   No. Observations:                  569
-# Model:                            GLM   Df Residuals:                  1235.26
-# Model Family:                Binomial   Df Model:                            5
-# Link Function:                  Logit   Scale:                          1.0000
-# Method:                          IRLS   Log-Likelihood:                -142.43
-# Date:                Sat, 08 Aug 2026   Deviance:                       284.86
-# Time:                        14:47:38   Pearson chi2:                     816.
-# No. Iterations:                    25   Pseudo R-squ. (CS):             0.1127
-# Covariance Type:            nonrobust                                         
-# =================================================================================
-#                     coef    std err          z      P>|z|      [0.025      0.975]
-# ---------------------------------------------------------------------------------
-# Intercept        -2.0407      0.222     -9.207      0.000      -2.475      -1.606
-# C(t_out)[T.2]    -2.0198      0.623     -3.242      0.001      -3.241      -0.799
-# C(t_out)[T.3]    -0.7628      0.362     -2.105      0.035      -1.473      -0.053
-# C(t_out)[T.4]   -24.5254   2.44e+04     -0.001      0.999   -4.78e+04    4.78e+04
-# C(t_out)[T.5]    -3.3163      1.027     -3.231      0.001      -5.328      -1.304
-# C(t_out)[T.6]   -24.5254   2.45e+04     -0.001      0.999    -4.8e+04    4.79e+04
-# =================================================================================
+print(logit_out.params)
+# Intercept       -4.555495
+# C(t_out)[T.2]    0.020236
+# C(t_out)[T.3]    0.507119
+# C(t_out)[T.4]    0.115563
+# C(t_out)[T.5]    0.071055
+# C(t_out)[T.6]    0.648623
+# dtype: float64
 trt_1 = d_plan_long.loc[d_plan_long['trt_clone'] == 1].copy()
 trt_1['predY'] = logit_out.predict(trt_1)
 trt_1['prednoY'] = 1 - trt_1['predY']
@@ -448,33 +475,20 @@ trt_1['predY_cumprod'] = trt_1.groupby('id')['prednoY'].cumprod()
 trt_1['riskY'] = 1 - trt_1['predY_cumprod']
 print(np.unique(trt_1['riskY']))
 bs_iptw_risk1 = np.unique(trt_1['riskY'])
-# [0.115      0.13       0.17970892 0.17970892 0.18355848 0.18355848]
+# [0.0104     0.0209     0.03769292 0.04891264 0.05952422 0.07805828]
+
 
 # Outcome model just among clones 0
 m_out = smf.glm(formula='Y ~ C(t_out) ', family=f, data=d_plan_long.loc[d_plan_long['trt_clone'] == 0], freq_weights=d_plan_long.loc[d_plan_long['trt_clone'] == 0,'iptw_clones'])
 logit_out = m_out.fit()
-print(logit_out.summary())
-#                  Generalized Linear Model Regression Results                  
-# ==============================================================================
-# Dep. Variable:                      Y   No. Observations:                  808
-# Model:                            GLM   Df Residuals:                  1081.63
-# Model Family:                Binomial   Df Model:                            5
-# Link Function:                  Logit   Scale:                          1.0000
-# Method:                          IRLS   Log-Likelihood:                -111.94
-# Date:                Sat, 08 Aug 2026   Deviance:                       223.87
-# Time:                        14:48:17   Pearson chi2:                 1.09e+03
-# No. Iterations:                     8   Pseudo R-squ. (CS):            0.03474
-# Covariance Type:            nonrobust                                         
-# =================================================================================
-#                     coef    std err          z      P>|z|      [0.025      0.975]
-# ---------------------------------------------------------------------------------
-# Intercept        -2.3700      0.253     -9.379      0.000      -2.865      -1.875
-# C(t_out)[T.2]    -2.5246      0.898     -2.812      0.005      -4.284      -0.765
-# C(t_out)[T.3]    -2.3922      0.854     -2.803      0.005      -4.065      -0.719
-# C(t_out)[T.4]    -1.7571      0.651     -2.697      0.007      -3.034      -0.480
-# C(t_out)[T.5]    -2.3675      0.854     -2.774      0.006      -4.041      -0.694
-# C(t_out)[T.6]    -1.8132      0.674     -2.691      0.007      -3.134      -0.492
-# =================================================================================
+print(logit_out.params)
+# Intercept       -4.606017
+# C(t_out)[T.2]    0.058554
+# C(t_out)[T.3]    0.010114
+# C(t_out)[T.4]    0.130180
+# C(t_out)[T.5]    0.221152
+# C(t_out)[T.6]    0.611820
+# dtype: float64
 trt_0 = d_plan_long.loc[d_plan_long['trt_clone'] == 0].copy()
 trt_0['predY'] = logit_out.predict(trt_0)
 trt_0['prednoY'] = 1 - trt_0['predY']
@@ -482,7 +496,7 @@ trt_0['predY_cumprod'] = trt_0.groupby('id')['prednoY'].cumprod()
 trt_0['riskY'] = 1 - trt_0['predY_cumprod']
 print(np.unique(trt_0['riskY']))
 bs_iptw_risk0 = np.unique(trt_0['riskY'])
-# [0.085488   0.09228369 0.09997561 0.11426203 0.12195395 0.13514295]
+# [0.00989269 0.02027198 0.03006167 0.04097602 0.05278269 0.06991689]
 
 ##################################################
 # BOOTSTRAP FOR CONFIDENCE INTERVALS 
@@ -554,7 +568,7 @@ ids = d_obs['id'].unique()
 
 
 # B=100_000
-B = 1_000
+B = 10_000
 print("Bootstrap:", B)
 # B=5
 iters1 = []
@@ -618,17 +632,13 @@ np.mean(stacked_iters0, axis = 0)
 #        0.16784082])
 
 np.mean(stacked_iters1, axis = 0)
-# array([0.1193435 , 0.126775  , 0.14518164, 0.14589186, 0.15561684,
-#        0.17689964])
 
 pd.DataFrame(stacked_iters1).to_csv(f"./stacked_iptw_{B}iters1.csv", index=False)
 pd.DataFrame(stacked_iters0).to_csv(f"./stacked_iptw_{B}iters0.csv", index=False)
-# pd.DataFrame(stacked_itersRD).to_csv("./stacked_itersRD.csv", index=False)
 
 np.var(stacked_iters1, axis=0, ddof=1)
 np.sqrt(np.var(stacked_iters1, axis=0, ddof=1))
-# array([0.00697552, 0.00715406, 0.01056829, 0.01055145, 0.01217187,
-#        0.01494049])
+
 
 out1 = pd.DataFrame({"estimate": np.asarray(bs_iptw_risk1)})
 out1["variance"] = np.var(stacked_iters1, axis=0, ddof=1)
@@ -640,37 +650,16 @@ out1["measure"] = "risk1"
 print(out1)
 
 # RISK 1 BOOTSTRAP 
-#    estimate  variance       std       LCL       UCL
-# 0  0.119004  0.000049  0.006976  0.105332  0.132676
-# 1  0.126504  0.000051  0.007154  0.112482  0.140526
-# 2  0.144871  0.000112  0.010568  0.124157  0.165584
-# 3  0.145588  0.000111  0.010551  0.124907  0.166269
-# 4  0.155499  0.000148  0.012172  0.131642  0.179356
-# 5  0.177018  0.000223  0.014940  0.147735  0.206301
+
+
 print(ee_r1_out)
 # RISK 1 ESTIMATING EQUATIONS
-#    estimate  variance    stderr       LCL       UCL
-# 0  0.119000  0.000052  0.007240  0.104810  0.133190
-# 1  0.126500  0.000055  0.007433  0.111932  0.141068
-# 2  0.144868  0.000126  0.011245  0.122828  0.166907
-# 3  0.145585  0.000127  0.011252  0.123533  0.167638
-# 4  0.155496  0.000162  0.012747  0.130513  0.180479
-# 5  0.177015  0.000243  0.015599  0.146441  0.207590
 
-# Compared to eestimating equations
-# array([0.119     , 0.1265    , 0.14486753, 0.14558512, 0.15549596,
-# 0.17701546]), 
-# array([0.00724013, 0.00743296, 0.01124461, 0.0112515 , 0.01274656,
-# 0.01559935]), 
 
 np.var(stacked_iters1, axis=0, ddof=1)
 np.sqrt(np.var(stacked_iters1, axis=0, ddof=1))
-# array([0.00697552, 0.00715406, 0.01056829, 0.01055145, 0.01217187,
-#        0.01494049])
 np.var(stacked_iters0, axis=0, ddof=1)
 np.sqrt(np.var(stacked_iters0, axis=0, ddof=1))
-# array([0.00708384, 0.00733122, 0.00759468, 0.00799304, 0.00861501,
-    #    0.00915675])
 
 out0 = pd.DataFrame({"estimate": np.asarray(bs_iptw_risk0)})
 out0["variance"] = np.var(stacked_iters0, axis=0, ddof=1)
@@ -681,33 +670,12 @@ out0["measure"] = "risk0"
 
 # print(out0)
 # RISK 0 BOOTSTRAP
-#    estimate  variance       std       LCL       UCL
-# 0  0.108612  0.000050  0.007084  0.094727  0.122496
-# 1  0.116394  0.000054  0.007331  0.102025  0.130763
-# 2  0.127445  0.000058  0.007595  0.112559  0.142330
-# 3  0.136298  0.000064  0.007993  0.120632  0.151965
-# 4  0.154006  0.000074  0.008615  0.137121  0.170892
-# 5  0.167220  0.000084  0.009157  0.149273  0.185168
+
 # print(ee_r0_out)
 # RISK 0 ESTIMATING EQUATIONS
-#    estimate  variance    stderr       LCL       UCL
-# 0  0.108612  0.000056  0.007493  0.093927  0.123297
-# 1  0.116394  0.000060  0.007757  0.101190  0.131599
-# 2  0.127445  0.000067  0.008171  0.111430  0.143461
-# 3  0.136299  0.000072  0.008480  0.119678  0.152920
-# 4  0.154007  0.000082  0.009046  0.136277  0.171738
-# 5  0.167222  0.000089  0.009427  0.148745  0.185698
-
-# Compared to estimating equations
-# array([0.10861206, 0.11639432, 0.12744517, 0.13629923, 0.15400734,
-# 0.16722157]), 
-# array([0.00749262, 0.00775748, 0.00817132, 0.00848035, 0.0090463 ,
-# 0.00942692])
 
 np.var(stacked_iters1 - stacked_iters0, axis=0, ddof=1)
 np.sqrt(np.var(stacked_iters1 - stacked_iters0, axis=0, ddof=1))
-# array([0.00343632, 0.00354108, 0.0091942 , 0.00958359, 0.01187489,
-    #    0.01493929])
 
 
 outrd = pd.DataFrame({"estimate": np.asarray(bs_iptw_risk1 - bs_iptw_risk0)})
@@ -719,28 +687,11 @@ outrd["measure"] = "rd"
 
 # print(outrd)
 # RISK DIFFERENCE BOOTSTRAP
-#    estimate  variance       std       LCL       UCL
-# 0  0.010392  0.000012  0.003436  0.003657  0.017127
-# 1  0.010110  0.000013  0.003541  0.003169  0.017050
-# 2  0.017426  0.000085  0.009194 -0.000595  0.035446
-# 3  0.009290  0.000092  0.009584 -0.009494  0.028073
-# 4  0.001493  0.000141  0.011875 -0.021782  0.024768
-# 5  0.009798  0.000223  0.014939 -0.019483  0.039079
-# print(ee_rd_out)
-# RISK DIFFERENCE ESTIMATING EQUATIONS
-#    estimate  variance    stderr       LCL       UCL
-# 0  0.010388  0.000012  0.003430  0.003665  0.017111
-# 1  0.010106  0.000013  0.003554  0.003139  0.017072
-# 2  0.017422  0.000094  0.009692 -0.001574  0.036418
-# 3  0.009286  0.000100  0.010012 -0.010337  0.028909
-# 4  0.001489  0.000149  0.012212 -0.022446  0.025423
-# 5  0.009794  0.000241  0.015526 -0.020637  0.040224
 
+# print(ee_rd_out)
+out_eeiptw_Rcompare = pd.concat([ee_rd_out, ee_r1_out, ee_r0_out], axis=0)
+out_eeiptw_Rcompare.to_csv('out_eeiptw_Rcompare.csv', float_format="%.17g")
 # compared to estimating equations
-# array([0.01038794, 0.01010568, 0.01742236, 0.00928589, 0.00148862,
-# 0.0097939 ]), 
-# array([0.00343007, 0.0035543 , 0.00969207, 0.01001198, 0.01221188,
-# 0.01552608]), 
 out_boot = pd.concat([out0, out1, outrd], axis=0)
 out_boot['implementation'] = f"{B} bootstrap"
 out_boot['time_secs'] = (t1_boot - t0_boot)
@@ -750,4 +701,49 @@ out_eeiptw['time_secs'] = (t1_ee - t0_ee)
 out_csv = pd.concat([ out_boot ,out_eeiptw], axis=0)
 
 out_csv.to_csv(f'time_{B}NPBSvsEE_{date}_{nobs}.csv')
+
+# Results with Bootstrap 100,000 Iterations-- expect Std Err is similar to the 4th decimal point
+
+
+
+# # Results with Bootstrap 10,000 Iterations-- StdErr is similar to the 3rd decimal point
+#  	t_out-1	estimate 	variance 	    stderr 	    LCL 	    UCL 	    measure  implementation 	time_secs
+# 0 	0 	0.009893 	1.108293e-06 	0.001053 	0.007829 	0.011956 	risk0 	10000 bootstrap 	6639.645044
+# 1 	1 	0.020272 	2.350866e-06 	0.001533 	0.017267 	0.023277 	risk0 	10000 bootstrap 	6639.645044
+# 2 	2 	0.030062 	3.725678e-06 	0.001930 	0.026278 	0.033845 	risk0 	10000 bootstrap 	6639.645044
+# 3 	3 	0.040976 	5.252466e-06 	0.002292 	0.036484 	0.045468 	risk0 	10000 bootstrap 	6639.645044
+# 4 	4 	0.052783 	6.781399e-06 	0.002604 	0.047679 	0.057887 	risk0 	10000 bootstrap 	6639.645044
+# 5 	5 	0.069917 	9.013581e-06 	0.003002 	0.064032 	0.075801 	risk0 	10000 bootstrap 	6639.645044
+# 6 	0 	0.010400 	1.036630e-06 	0.001018 	0.008404 	0.012396 	risk1 	10000 bootstrap 	6639.645044
+# 7 	1 	0.020900 	2.044986e-06 	0.001430 	0.018097 	0.023703 	risk1 	10000 bootstrap 	6639.645044
+# 8 	2 	0.037693 	1.676500e-05 	0.004095 	0.029668 	0.045718 	risk1 	10000 bootstrap 	6639.645044
+# 9 	3 	0.048913 	2.602180e-05 	0.005101 	0.038914 	0.058911 	risk1 	10000 bootstrap 	6639.645044
+# 10 	4 	0.059524 	3.335632e-05 	0.005775 	0.048204 	0.070844 	risk1 	10000 bootstrap 	6639.645044
+# 11 	5 	0.078058 	4.753149e-05 	0.006894 	0.064545 	0.091571 	risk1 	10000 bootstrap 	6639.645044
+# 12 	0 	0.000507 	1.569433e-07 	0.000396 	-0.000269 	0.001284 	rd 	    10000 bootstrap 	6639.645044
+# 13 	1 	0.000628 	4.257657e-07 	0.000653 	-0.000651 	0.001907 	rd 	    10000 bootstrap 	6639.645044
+# 14 	2 	0.007631 	1.666868e-05 	0.004083 	-0.000371 	0.015633 	rd 	    10000 bootstrap 	6639.645044
+# 15 	3 	0.007937 	2.741881e-05 	0.005236 	-0.002327 	0.018200 	rd 	    10000 bootstrap 	6639.645044
+# 16 	4 	0.006742 	3.635557e-05 	0.006030 	-0.005076 	0.018559 	rd 	    10000 bootstrap 	6639.645044
+# 17 	5 	0.008141 	5.330201e-05 	0.007301 	-0.006168 	0.022451 	rd 	    10000 bootstrap 	6639.645044
+# 18 	0 	0.009893 	1.089592e-06 	0.001044 	0.007847 	0.011939 	risk0 	        ee 	        1.742570
+# 19 	1 	0.020272 	2.355561e-06 	0.001535 	0.017264 	0.023280 	risk0 	        ee 	        1.742570
+# 20 	2 	0.030062 	3.693567e-06 	0.001922 	0.026295 	0.033828 	risk0 	        ee 	        1.742570
+# 21 	3 	0.040976 	5.171314e-06 	0.002274 	0.036519 	0.045433 	risk0 	        ee 	        1.742570
+# 22 	4 	0.052783 	6.695651e-06 	0.002588 	0.047711 	0.057854 	risk0 	        ee 	        1.742570
+# 23 	5 	0.069917 	8.854544e-06 	0.002976 	0.064085 	0.075749 	risk0 	        ee 	        1.742570
+# 24 	0 	0.010400 	1.029190e-06 	0.001014 	0.008412 	0.012388 	risk1 	        ee 	        1.742570
+# 25 	1 	0.020900 	2.046314e-06 	0.001430 	0.018096 	0.023704 	risk1 	        ee 	        1.742570
+# 26 	2 	0.037693 	1.672415e-05 	0.004090 	0.029678 	0.045708 	risk1 	        ee 	        1.742570
+# 27 	3 	0.048913 	2.524546e-05 	0.005024 	0.039065 	0.058760 	risk1 	        ee 	        1.742570
+# 28 	4 	0.059524 	3.223866e-05 	0.005678 	0.048396 	0.070653 	risk1 	        ee 	        1.742570
+# 29 	5 	0.078058 	4.619130e-05 	0.006796 	0.064738 	0.091379 	risk1 	        ee 	        1.742570
+# 30 	0 	0.000507 	1.598513e-07 	0.000400 	-0.000276 	0.001291 	rd 	            ee 	        1.742570
+# 31 	1 	0.000628 	4.306998e-07 	0.000656 	-0.000658 	0.001914 	rd 	            ee 	        1.742570
+# 32 	2 	0.007631 	1.654384e-05 	0.004067 	-0.000341 	0.015603 	rd 	            ee 	        1.742570
+# 33 	3 	0.007937 	2.662455e-05 	0.005160 	-0.002177 	0.018050 	rd 	            ee 	        1.742570
+# 34 	4 	0.006742 	3.522707e-05 	0.005935 	-0.004891 	0.018374 	rd 	            ee 	        1.742570
+# 35 	5 	0.008141 	5.143342e-05 	0.007172 	-0.005915 	0.022198 	rd 	            ee 	        1.742570
+
+
 # !SECTION - 
