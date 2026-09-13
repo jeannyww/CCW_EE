@@ -39,7 +39,7 @@ print(true_risk1_method1)
 # 4     5   0.059333
 # 5     6   0.072440
 
-# Method 2 is the true counterfactual that I had evaluated
+
 true_risk1_method2 = pd.read_csv('true2_risk1_method2.csv')
 truth_r1_meth2 = np.asarray(true_risk1_method2['Surv prob'])
 print(true_risk1_method2)
@@ -51,6 +51,7 @@ print(true_risk1_method2)
 # 4     5   0.057921
 # 5     6   0.070601
 
+# Method 0 is the true counterfactual that I had evaluated
 true_risk1_method0 = pd.read_csv('true2_risk1_method0.csv')
 truth_r1_meth0 = np.asarray(true_risk1_method0['Surv prob'])
 print(true_risk1_method0)
@@ -110,12 +111,13 @@ for i in range(1, n_timepoints + 1):
     # res2 = pd.read_csv(f"./out/v2sim_tout_{i}_n50000_4999.csv") 
     # results = pd.concat([res1, res2])
     # use this when the simulations stop halfway 
-    res0 = pd.read_csv(f"./out/v2iptwsim_tout_{i}_n100000_1000.csv") 
-    res1 = pd.read_csv(f"./out/v21iptwsim_tout_{i}_n100000_1000.csv")
-    res2 = pd.read_csv(f"./out/v22iptwsim_tout_{i}_n100000_1000.csv")
-    res3 = pd.read_csv(f"./out/v23iptwsim_tout_{i}_n100000_1000.csv")
-    res4 = pd.read_csv(f"./out/v24iptwsim_tout_{i}_n100000_1000.csv")
-    results = pd.concat([res0, res1, res2, res3, res4])
+    # res0 = pd.read_csv(f"./out/v2iptwsim_tout_{i}_n100000_1000.csv") 
+    # res1 = pd.read_csv(f"./out/v21iptwsim_tout_{i}_n100000_1000.csv")
+    # res2 = pd.read_csv(f"./out/v22iptwsim_tout_{i}_n100000_1000.csv")
+    # res3 = pd.read_csv(f"./out/v23iptwsim_tout_{i}_n100000_1000.csv")
+    # res4 = pd.read_csv(f"./out/v24iptwsim_tout_{i}_n100000_1000.csv")
+    # results = pd.concat([res0, res1, res2, res3, res4])
+    results = pd.read_csv(f"./out/v130iptwsim_tout_{i}_n10000_5000.csv")
     # results = pd.read_csv(f"./out/v2iptwsim_tout_{i}_n20000_5000.csv") # tweaked the first A ~ model here at time ==0 to match those time >0
     # results = pd.read_csv(f"./out/v2iptwsim_tout_{i}_n3000_5000.csv") # tweaked the first A ~ model here at time ==0 to match those time >0
     # results = pd.read_csv(f"./out/v121iptwsim_tout_{i}_n3000_2000.csv") # tweaked the first A ~ model here at time ==0 to match those time >0
@@ -173,13 +175,33 @@ for i in range(1, n_timepoints + 1):
 out_sorted = out.sort_values(by=['Measure', 't_out']).reset_index(drop=True)    
 print(out_sorted)
 
-out_sorted.to_csv(f"./out/_iptw_simout_tmp.csv")
+out_sorted.to_csv("./out/_iptw_simout_tmp.csv")
+
+
+# t_out	Measure	Bias	Emperical_SE	SE_ratio	RMSE	CI_Coverage
+# 1 	r0	    0.0000	0.0010      	1.01	    0.0010	0.95
+# 2 	r0	    0.0000	0.0014      	1.01	    0.0014	0.95
+# 3 	r0	    0.0000	0.0018      	1.02	    0.0018	0.96
+# 4 	r0	    0.0001	0.0022      	1.02	    0.0022	0.95
+# 5 	r0	    0.0002	0.0026      	1.02	    0.0026	0.95
+# 6 	r0	    0.0002	0.0029      	1.01	    0.0029	0.95
+# 1 	r1	    0.0000	0.0010      	1.00	    0.0010	0.94
+# 2 	r1	    0.0000	0.0014      	1.00	    0.0014	0.95
+# 3 	r1	    0.0003	0.0040      	0.99	    0.0040	0.95
+# 4 	r1	    0.0002	0.0050      	0.98	    0.0050	0.94
+# 5 	r1	    0.0000	0.0059      	0.98	    0.0059	0.94
+# 6 	r1	    -0.0001	0.0066      	0.99	    0.0066	0.94
+# 1 	rd	    0.0000	0.0004      	1.00	    0.0004	0.94
+# 2 	rd	    0.0000	0.0007      	1.02	    0.0007	0.95
+# 3 	rd	    0.0002	0.0041      	0.99	    0.0041	0.94
+# 4 	rd	    0.0001	0.0052      	0.98	    0.0052	0.94
+# 5 	rd	    -0.0001	0.0061      	0.99	    0.0061	0.94
+# 6 	rd	    -0.0003	0.0070      	0.99	    0.0070	0.95
+
+
+
 
 # !SECTION - Compiling results from iptw simulation
-
-
-
-
 
 
 

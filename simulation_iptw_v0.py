@@ -32,17 +32,16 @@ from functions_ee import clone_and_censor
 gp = 2
 n_trts = 2
 
-vers = 24
+vers = 130
 rng_runs = np.random.default_rng(vers+1) # new seed for the v2sim_tout_6_n100000_2999 for the remaining 2000
-nobs = 100_000 
-# runs=5_000
-runs = 1_000
-
+# nobs = 100_000 
+runs=5_000
+# runs = 1_000
 # runs= 10_000
 # runs = 5_000
 # nobs = 2_000
 # nobs = 10_000
-# nobs = 10_000
+nobs = 10_000
 # nobs = 5_000
 
 print(f"version: {vers}")
