@@ -134,15 +134,9 @@ def iptw_weights(theta):
     # Weights for clones to trt plan 1
     pred_trt_cumprod_mtrx_gp = np.ones(shape=(len(times_to_predict), nobs))
 
-    # * NOTE - USING THE CUMPROD All simulations before version 11
-    pred_trt_cumprod_mtrx_gp[gp, :] = np.where( (t_trt == 2) & (trt_obs == 1), pred_trt_cumprod_mtrx[gp, :], 1) # CUMPROD simulations before version 11 have the cumprod version
+    # No cumprod-- fixed
+    pred_trt_cumprod_mtrx_gp[gp, :] = np.where( (t_trt == 2) & (trt_obs == 1), pred_trt_alltimepoints[gp, :], 1) # NOT CUMPROD
 
-    # Simulations for version 12 is trying the NOT cumprod version of the pred_trt_observed_mtrx
-    # Then version 12 looks at the noncumprod version using the pred_trt_alltimepoints (not sure if this makes difference likely not) 
-    # pred_trt_cumprod_mtrx_gp[gp, :] = np.where( (t_trt == 2) & (trt_obs == 1), pred_trt_alltimepoints[gp, :], 1) # NOT CUMPROD
-    # NOTE - NOT CUMPROD, version 121, version 47 - just the non-cumprod predicted probability here 
-    # pred_trt_cumprod_mtrx_gp[gp, :] = np.where( (t_trt == 2) & (trt_obs == 1), pred_trt_alltimepoints[gp, :], 1) # NOT CUMPROD, version 121, version 47 - just the non-cumprod predicted probability here 
-    # pred_trt_cumprod_mtrx_gp[gp, :] =  pred_trt_alltimepoints[gp, :] # NOT CUMPROD, version 122 - just the non-cumprod predicted probability here 
 
     cens1_tmp_mtrx = cens1_risk_set_mtrx * np.power(pred_trt_cumprod_mtrx_gp, -1)
     cens1_weight_mtrx = np.cumprod(cens1_tmp_mtrx, axis=0)

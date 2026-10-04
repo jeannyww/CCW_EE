@@ -62,21 +62,21 @@ t_delta0 <- d_c0[["t_out"]]
 
 ### All time points to predict
 times_to_predict <- sort(unique(d[["t_out"]] - 1))
-n_times_to_predict = length(times_to_predict)
+n_times_to_predict <- length(times_to_predict)
 
 ### Creat inits - these are the sub-optimal inits that are used in the python version
-inits_iptw = c(-24.0, -0.1309, -1.8034, -0.2509, -0.2721)
+inits_iptw <- c(-24.0, -0.1309, -1.8034, -0.2509, -0.2721)
 init_time_y1 <- c(-2.3807, -2.206558, -1.1257, -2.748212, -2.855993, -2.816546)
 init_time_y0 <- c(0.1158363, 0.12840615, 0.16394126, 0.17089769, 0.17709666, 0.1834949)
 
 # For the parameters of interest
-init_risks1 = c(0.115, 0.13, 0.17970892, 0.17970892, 0.18355848, 0.18355848)
-init_risks0 = c(0.0854, 0.092283, 0.099975, 0.114262, 0.121953, 0.135142)
+init_risks1 <- c(0.115, 0.13, 0.17970892, 0.17970892, 0.18355848, 0.18355848)
+init_risks0 <- c(0.0854, 0.092283, 0.099975, 0.114262, 0.121953, 0.135142)
 #  For risk differences
 init_rd <- c(0.0295, 0.0377, 0.0797, 0.0654, 0.0616, 0.0484)
 
 # All inits for the entire psi stack
-inits = c(init_rd, init_risks1, init_risks0, init_time_y1, init_time_y0, inits_iptw)
+inits <- c(init_rd, init_risks1, init_risks0, init_time_y1, init_time_y0, inits_iptw)
 
 # !SECTION - Vectors and inits
 
@@ -196,8 +196,8 @@ iptw_weights <- function(theta) {
     uncens1_t_mtrx <- 1 - apply(X = cens1_t_matrix, MARGIN = 2, FUN = cumsum) # indicates when the observation remains uncensored
     cens1_risk_set_mtrx <- uncens1_t_mtrx * in_risk_set_all
     pred_trt_cumprod_mtrx_gp <- matrix(1, nrow = length(times_to_predict), ncol = length(trt_obs))
-    # Identifying those who were treated exactly at the gp as those who are upweighted as the counterfactual
-    pred_trt_cumprod_mtrx_gp[gp + 1, ((t_trt == 2) & (trt_obs == 1))] <- pred_trt_cumprod_mtrx[gp + 1, ((t_trt == 2) & (trt_obs == 1))]
+    # Identifying those who were treated exactly at the gp as those who are upweighted as the counterfactual (fixed as non-cumprod weights are required here.)
+    pred_trt_cumprod_mtrx_gp[gp + 1, ((t_trt == 2) & (trt_obs == 1))] <- pred_trt_alltimepoints[gp + 1, ((t_trt == 2) & (trt_obs == 1))]
     cens1_tmp_mtrx <- cens1_risk_set_mtrx * (pred_trt_cumprod_mtrx_gp**(-1))
     cens1_weight_mtrx <- apply(X = cens1_tmp_mtrx, MARGIN = 2, FUN = cumprod)
     # Weight matrix for clones to strategy 0, no trt within nor at the gp
@@ -286,7 +286,7 @@ psi_ccw <- function(theta) {
 # SECTION - Implementing the CCW EE
 ##################################################
 index_msm <- n_times_to_predict * 5
-inits = c(init_rd, init_risks1, init_risks0, init_time_y1, init_time_y0, inits_iptw)
+inits <- c(init_rd, init_risks1, init_risks0, init_time_y1, init_time_y0, inits_iptw)
 # m_estr <- MEstimator(stacked_equations = psi_ccw, init = inits) |> estimate()
 # https://r-causal.github.io/deli/reference/estimate.html
 start_time <- Sys.time()
@@ -428,7 +428,7 @@ theta_msm_r0 <- theta[((n_times_to_predict * 4) + 1):index_msm]
 theta_iptw <- theta[-seq_len(index_msm)]
 test <- pred_risk(theta = test_msm@theta)
 # Test for creating risk predictions
-beta_t = test_msm@theta
+beta_t <- test_msm@theta
 beta_t@theta
 time_design_matrix <- diag(n_times_to_predict)
 time_design_matrix[, 1] <- 1
@@ -492,7 +492,7 @@ logodds_t_matrix <- matrix(data = rep(logodds_t, length(trt_obs)), ncol = length
 pred_trt_matrix <- plogis(logodds_a_lag_matrix + logodds_w_matrix + logodds_t_matrix)
 pred_trt_observed_mtrx <- (trt_obs_matrix * pred_trt_matrix) + (1 - trt_obs_matrix) * (1 - pred_trt_matrix)
 pred_trt_alltimepoints <- matrix(1, nrow = length(times_to_predict), ncol = length(trt_obs))
-pred_trt_alltimepoints[unique_trt_times + 1, ] = pred_trt_observed_mtrx
+pred_trt_alltimepoints[unique_trt_times + 1, ] <- pred_trt_observed_mtrx
 pred_trt_cumprod_mtrx <- apply(X = pred_trt_alltimepoints, MARGIN = 2, FUN = cumprod)
 in_risk_set_all <- 1 * outer(X = times_to_predict, Y = (t_delta - 1), FUN = "<=")
 
@@ -519,7 +519,7 @@ cens0_t_mtrx <- sweep(
     FUN = "*"
 )
 uncens0_t_mtrx <- 1 - apply(X = cens0_t_mtrx, MARGIN = 2, FUN = cumsum)
-cens0_risk_set_mtrx = uncens0_t_mtrx * in_risk_set_all
+cens0_risk_set_mtrx <- uncens0_t_mtrx * in_risk_set_all
 cens0_weight_mtrx <- cens0_risk_set_mtrx * (pred_trt_cumprod_mtrx**(-1))
 
 
@@ -545,7 +545,7 @@ dim(test)
 
 theta <- inits_iptw
 beta_a_lag <- theta[0:1]
-beta_w = theta[2]
+beta_w <- theta[2]
 beta_time <- theta[3:length(x)]
 # https://search.r-project.org/R/refmans/base/html/sweep.html
 # Observed treatment matrix
@@ -571,7 +571,7 @@ trt_lag_matrix <- sweep(
 # print(trt_obs_matrix[1:3, 1:10])
 
 # Creating the log-odds for the prediction matrix
-logodds_a_lag = (trt_lag_matrix * beta_a_lag) # broadcast multiplication with a scalar
+logodds_a_lag <- (trt_lag_matrix * beta_a_lag) # broadcast multiplication with a scalar
 # print(logodds_a_lag[1:3, 1:20])
 logodds_a_lag_matrix <- logodds_a_lag * in_risk_set # multiplying by the risk set matrix in case the person was censored or died at the lag treatment time
 # print(logodds_a_lag_matrix[1:3, 1:20])
@@ -589,10 +589,10 @@ time_design_matrix[0:n_trt_times, 1] <- 1
 # print(time_design_matrix)
 logodds_t <- time_design_matrix %*% beta_time
 # Predicted probability of treatment
-logodds_t_matrix = matrix(data = rep(logodds_t, length(trt_obs)), ncol = length(trt_obs))
+logodds_t_matrix <- matrix(data = rep(logodds_t, length(trt_obs)), ncol = length(trt_obs))
 # logodds_t_matrix[1:3, 1:10]
 trt_pred_matrix <- plogis(logodds_covariates + logodds_t_matrix)
-trt_residual_matrix = (trt_obs_matrix - trt_pred_matrix) * in_risk_set
+trt_residual_matrix <- (trt_obs_matrix - trt_pred_matrix) * in_risk_set
 
 a_lag_score <- matrix(rep(1, n_trt_times), nrow = 1) %*% (trt_residual_matrix * trt_lag_matrix)
 # dim(a_lag_score)
